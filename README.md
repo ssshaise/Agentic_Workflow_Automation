@@ -57,8 +57,9 @@ Validator Agent
 Monitor Agent (Retry / Fix)
    ↓
 Output + Memory Storage
+```
 
-Tech Stack
+## Tech Stack
 Frontend: React / Next.js, Tailwind CSS, React Flow (for workflow visualization)
 
 Backend: Python (FastAPI), LangGraph / CrewAI (for agent orchestration), REST APIs
@@ -76,7 +77,7 @@ Agentic_Workflow_Automation/
 
 ### Getting Started
 
-1. Clone the repository
+``` 1. Clone the repository
 Bash
 git clone [https://github.com/ssshaise/Agentic_Workflow_Automation.git](https://github.com/ssshaise/Agentic_Workflow_Automation.git)
 cd Agentic_Workflow_Automation
@@ -103,3 +104,4 @@ Bash
 cd frontend
 npm install
 npm run dev
+```
