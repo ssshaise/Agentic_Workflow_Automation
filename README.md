@@ -66,14 +66,15 @@ Backend: Python (FastAPI), LangGraph / CrewAI (for agent orchestration), REST AP
 
 AI / ML: LLMs (OpenAI, Llama, etc.), NLP pipelines, Embeddings and vector databases
 
-Project Structure
+## Project Structure
 
-Agentic_Workflow_Automation/
+``` Agentic_Workflow_Automation/
 │
 ├── backend/        # API and agent logic
 ├── frontend/       # React-based UI
 ├── README.md
 └── .gitignore
+```
 
 ### Getting Started
 
