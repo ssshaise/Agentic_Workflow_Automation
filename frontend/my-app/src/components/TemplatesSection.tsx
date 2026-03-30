@@ -30,6 +30,17 @@ export default function TemplatesSection({ onUseTemplate }: Props) {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
+  const footerLinks: Record<string, string> = {
+    "Privacy Policy": "https://openai.com/policies/privacy-policy/",
+    "Terms of Service": "https://openai.com/policies/terms-of-use/",
+    "API Reference": "https://platform.openai.com/docs/api-reference",
+  }
+
+  const footerButtons: Record<string, string> = {
+    alternate_email: "mailto:support@flow.local",
+    code: "https://platform.openai.com/docs",
+  }
+
   return (
     <section ref={sectionRef} className="snap-section" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "5rem 2rem", width: "100%" }}>
@@ -71,12 +82,12 @@ export default function TemplatesSection({ onUseTemplate }: Props) {
         </div>
         <div style={{ display: "flex", gap: "2rem" }}>
           {["Privacy Policy", "Terms of Service", "API Reference"].map(l => (
-            <a key={l} href="#" style={{ color: "rgba(238,228,252,0.3)", fontSize: "0.75rem", textDecoration: "none", fontFamily: "Manrope,sans-serif" }}>{l}</a>
+            <a key={l} href={footerLinks[l]} style={{ color: "rgba(238,228,252,0.3)", fontSize: "0.75rem", textDecoration: "none", fontFamily: "Manrope,sans-serif" }}>{l}</a>
           ))}
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {["alternate_email", "code"].map(icon => (
-            <button key={icon} style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(41,34,58,0.5)", border: "1px solid rgba(190,157,255,0.1)", color: "rgba(238,228,252,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button key={icon} onClick={() => window.open(footerButtons[icon], "_blank", "noopener,noreferrer")} style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(41,34,58,0.5)", border: "1px solid rgba(190,157,255,0.1)", color: "rgba(238,228,252,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
             </button>
           ))}

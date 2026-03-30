@@ -1,14 +1,33 @@
-# Python
-venv/
-.venv/
-__pycache__/
-*.pyc
 
-# Environment variables
 .env
+.env.*
+!.env.example
 
-# Node (if you have frontend)
-node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
 
-# OS files
+storage/*.db
+storage/*.db-journal
+storage/*.sqlite
+storage/*.sqlite3
+storage/*.log
+storage/*.json
+storage/vector_db/
+storage/chroma/
+storage/tmp/
+
+!storage/.gitkeep
+!storage/*.example.json
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
 .DS_Store
+Thumbs.db
+.vscode/

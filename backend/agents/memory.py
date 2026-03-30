@@ -1,4 +1,7 @@
-from memory.chroma_memory import ChromaMemory
+try:
+    from ..memory.chroma_memory import ChromaMemory
+except ImportError:
+    from memory.chroma_memory import ChromaMemory
 
 class MemoryAgent:
     def __init__(self):

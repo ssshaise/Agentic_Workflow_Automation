@@ -1,7 +1,10 @@
 import smtplib
 from email.message import EmailMessage
 from typing import Dict, Any
-from config import SMTP_CONFIG
+try:
+    from ..config import SMTP_CONFIG
+except ImportError:
+    from config import SMTP_CONFIG
 
 class EmailSender:
     def execute(self, to: str, subject: str, body: str, from_address: str = None) -> Dict[str, Any]:

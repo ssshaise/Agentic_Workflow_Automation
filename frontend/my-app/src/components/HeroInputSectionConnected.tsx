@@ -1,11 +1,29 @@
 import { useEffect, useRef } from "react"
 
+interface StatusChip {
+  label: string
+  dot: string | null
+}
+
 interface Props {
   inputValue?: string
   onInputChange?: (val: string) => void
+  onRunWorkflow?: () => void
+  onScheduleWorkflow?: () => void
+  onAttachFile?: (file: File | null) => void
+  statusChips?: StatusChip[]
+  isBusy?: boolean
 }
 
-export default function HeroInputSection({ inputValue = "", onInputChange }: Props) {
+export default function HeroInputSectionConnected({
+  inputValue = "",
+  onInputChange,
+  onRunWorkflow,
+  onScheduleWorkflow,
+  onAttachFile,
+  statusChips,
+  isBusy = false,
+}: Props) {
   const refs = [
     useRef<HTMLDivElement>(null),
     useRef<HTMLHeadingElement>(null),
@@ -13,6 +31,7 @@ export default function HeroInputSection({ inputValue = "", onInputChange }: Pro
     useRef<HTMLDivElement>(null),
     useRef<HTMLDivElement>(null),
   ]
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const delays = [0, 100, 200, 350, 500]
@@ -20,6 +39,12 @@ export default function HeroInputSection({ inputValue = "", onInputChange }: Pro
       setTimeout(() => ref.current?.classList.add("reveal-visible"), delays[i])
     })
   }, [])
+
+  const chips = statusChips || [
+    { label: "3 agents active", dot: "#4ade80" },
+    { label: "WKF-8821-X running", dot: "#be9dff" },
+    { label: "12 workflows today", dot: null },
+  ]
 
   return (
     <section className="snap-section" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -40,15 +65,14 @@ export default function HeroInputSection({ inputValue = "", onInputChange }: Pro
           </h1>
 
           <p ref={refs[2]} className="reveal-hidden" style={{ color: "rgba(238,228,252,0.55)", fontSize: "1rem", lineHeight: 1.75, maxWidth: 480, marginBottom: "2.5rem" }}>
-            Deploy agentic workflows that browse, reason, and execute tasks across the web — with precision and zero manual effort.
+            Deploy agentic workflows that browse, reason, and execute tasks across the web with precision and zero manual effort.
           </p>
 
-          {/* Input box */}
           <div ref={refs[3]} className="reveal-hidden liquid-glass" style={{ borderRadius: 16, overflow: "hidden", marginBottom: "1.25rem" }}>
             <textarea
               value={inputValue}
               onChange={e => onInputChange?.(e.target.value)}
-              placeholder="Monitor arxiv papers → summarize → send email"
+              placeholder="Monitor arxiv papers -> summarize -> send email"
               rows={2}
               style={{
                 width: "100%", background: "none", border: "none", outline: "none",
@@ -56,27 +80,24 @@ export default function HeroInputSection({ inputValue = "", onInputChange }: Pro
                 fontSize: "0.9375rem", resize: "none", padding: "1rem 1.25rem",
               }}
             />
+            <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={e => onAttachFile?.(e.target.files?.[0] || null)} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderTop: "1px solid rgba(190,157,255,0.08)" }}>
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                {[["attach_file", "Attach"], ["schedule", "Schedule"]].map(([icon, label]) => (
-                  <button key={label} className="btn-glass" style={{ padding: "0.3rem 0.75rem", fontSize: "0.75rem", borderRadius: 8 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{icon}</span>{label}
-                  </button>
-                ))}
+                <button className="btn-glass" style={{ padding: "0.3rem 0.75rem", fontSize: "0.75rem", borderRadius: 8 }} onClick={() => fileInputRef.current?.click()}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>attach_file</span>Attach
+                </button>
+                <button className="btn-glass" style={{ padding: "0.3rem 0.75rem", fontSize: "0.75rem", borderRadius: 8 }} onClick={onScheduleWorkflow}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>schedule</span>Schedule
+                </button>
               </div>
-              <button className="btn-primary" style={{ borderRadius: 10, padding: "0.5rem 1.25rem" }}>
-                Run Workflow <span className="material-symbols-outlined" style={{ fontSize: 15 }}>bolt</span>
+              <button className="btn-primary" style={{ borderRadius: 10, padding: "0.5rem 1.25rem", opacity: isBusy ? 0.85 : 1 }} onClick={onRunWorkflow}>
+                {isBusy ? "Running..." : "Run Workflow"} <span className="material-symbols-outlined" style={{ fontSize: 15 }}>bolt</span>
               </button>
             </div>
           </div>
 
-          {/* Status chips */}
           <div ref={refs[4]} className="reveal-hidden" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            {[
-              { label: "3 agents active", dot: "#4ade80" },
-              { label: "WKF-8821-X running", dot: "#be9dff" },
-              { label: "12 workflows today", dot: null },
-            ].map(c => (
+            {chips.map(c => (
               <div key={c.label} style={{
                 display: "inline-flex", alignItems: "center", gap: "0.375rem",
                 padding: "0.25rem 0.875rem",

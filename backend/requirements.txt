@@ -1,8 +1,10 @@
 fastapi
 uvicorn
-openai
 langgraph
 chromadb
 pydantic
 requests
 python-dotenv
+sqlalchemy
+cryptography
+psycopg2-binary

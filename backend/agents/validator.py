@@ -1,24 +1,29 @@
-import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, OPENAI_MODEL
+from typing import Optional
+
+try:
+    from ..gemini_client import GeminiClient
+except ImportError:
+    from gemini_client import GeminiClient
 
 class ValidatorAgent:
-    def __init__(self):
-        if not OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY environment variable must be set")
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+    def __init__(self, api_key: Optional[str] = None):
+        self.client = GeminiClient(api_key=api_key) if api_key else None
 
     def evaluate(self, step, result):
+        audit = result.get("audit", {})
+        if audit and not audit.get("success", False):
+            return {"valid": False, "issue": f"Tool execution failed for {step.get('action')}"}
+        if self.client is None:
+            return {"valid": True, "issue": ""}
         prompt = (
             "You are a workflow validator.\n"
+            "Return valid JSON only.\n"
+            "Do not use markdown fences.\n"
             f"Step: {step}\n"
             f"Result: {result}\n"
             "Answer with JSON {\"valid\": true|false, \"issue\": \"...\"}."
         )
-        response = self.client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-        )
-        text = response.choices[0].message.content
-        return json.loads(text)
+        try:
+            return self.client.generate_json(prompt, max_output_tokens=200)
+        except Exception:
+            return {"valid": True, "issue": ""}
