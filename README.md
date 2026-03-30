@@ -60,11 +60,11 @@ Output + Memory Storage
 ```
 
 ## Tech Stack
-# Frontend: React / Next.js, Tailwind CSS, React Flow (for workflow visualization)
+Frontend: React / Next.js, Tailwind CSS, React Flow (for workflow visualization)
 
-# Backend: Python (FastAPI), LangGraph / CrewAI (for agent orchestration), REST APIs
+Backend: Python (FastAPI), LangGraph / CrewAI (for agent orchestration), REST APIs
 
-# AI / ML: LLMs (OpenAI, Llama, etc.), NLP pipelines, Embeddings and vector databases
+AI / ML: LLMs (OpenAI, Llama, etc.), NLP pipelines, Embeddings and vector databases
 
 Project Structure
 
