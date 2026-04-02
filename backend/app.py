@@ -94,18 +94,19 @@ def get_engine(api_key: Optional[str] = None) -> Optional[AgenticWorkflow]:
         return None
     return AgenticWorkflow(api_key=effective_key)
 
-def execute_task(task: str, secrets: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+
+def execute_task(task: str, secrets: Optional[Dict[str, str]] = None, user_email: Optional[str] = None) -> Dict[str, Any]:
     secrets = secrets or {}
     engine = get_engine(secrets.get("geminiApiKey"))
     if engine is None:
-        local_execution = run_local_workflow(task)
+        local_execution = run_local_workflow(task, secrets=secrets, default_recipient=user_email)
         local_execution["message"] = "Gemini engine unavailable, executed the deterministic local workflow engine instead."
         return local_execution
     try:
         results = engine.run(task)
         return {"results": results, "used_fallback": False, "mode": "gemini", "message": "Workflow executed successfully."}
     except Exception as exc:
-        local_execution = run_local_workflow(task)
+        local_execution = run_local_workflow(task, secrets=secrets, default_recipient=user_email)
         local_execution["message"] = f"Gemini planning failed, so the local automation engine executed the workflow instead: {exc}"
         return local_execution
 
@@ -257,7 +258,7 @@ async def replay_workflow(workflow_id: str, current_user: Dict[str, Any] = Depen
     workflow = store.get_workflow(current_user["id"], workflow_id)
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found.")
-    execution = execute_task(workflow["task"], store.get_user_secrets(current_user["id"]))
+    execution = execute_task(workflow["task"], store.get_user_secrets(current_user["id"]), current_user.get("email"))
     latest_run = store.update_run(
         current_user["id"],
         store.create_queued_run(current_user["id"], workflow["task"], workflow_id, workflow["name"])["id"],
@@ -275,7 +276,7 @@ async def run_workflow(req: TaskRequest, current_user: Dict[str, Any] = Depends(
     enforce_rate_limit(f"run_workflow:{current_user['id']}", limit=6, window_seconds=60)
     if not req.task.strip():
         raise HTTPException(status_code=400, detail="Task cannot be empty.")
-    execution = execute_task(req.task, store.get_user_secrets(current_user["id"]))
+    execution = execute_task(req.task, store.get_user_secrets(current_user["id"]), req.user_email or current_user.get("email"))
     latest_run = store.update_run(
         current_user["id"],
         store.create_queued_run(current_user["id"], req.task, req.workflow_id, None)["id"],
@@ -355,7 +356,7 @@ async def replay_history_run(run_id: str, current_user: Dict[str, Any] = Depends
     run = next((item for item in history if item["id"] == run_id), None)
     if not run:
         raise HTTPException(status_code=404, detail="History run not found.")
-    execution = execute_task(run["task"], store.get_user_secrets(current_user["id"]))
+    execution = execute_task(run["task"], store.get_user_secrets(current_user["id"]), current_user.get("email"))
     latest_run = store.update_run(
         current_user["id"],
         store.create_queued_run(current_user["id"], run["task"], run["workflowId"], run["name"])["id"],

@@ -14,14 +14,14 @@ class WorkflowQueue:
         workflow_id: Optional[str],
         workflow_name: Optional[str],
         store,
-        execute_task: Callable[[str, Dict[str, str]], Dict],
+        execute_task: Callable[[str, Dict[str, str], Optional[str]], Dict],
         secrets: Dict[str, str],
     ) -> Dict:
         queued_run = store.create_queued_run(user_id=user_id, task=task, workflow_id=workflow_id, workflow_name=workflow_name)
 
         def worker() -> None:
             store.update_run(user_id, queued_run["id"], status="running", execution_message="Workflow is running in the background.", execution_mode="queued")
-            execution = execute_task(task, secrets)
+            execution = execute_task(task, secrets, store.get_public_user(user_id).get("email"))
             store.update_run(
                 user_id,
                 queued_run["id"],

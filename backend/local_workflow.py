@@ -31,12 +31,25 @@ def _extract_email(task: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def run_local_workflow(task: str) -> Dict[str, Any]:
+def _build_smtp_config(secrets: Optional[Dict[str, str]]) -> Dict[str, Any]:
+    secrets = secrets or {}
+    port = secrets.get("smtpPort", "")
+    return {
+        "host": secrets.get("smtpHost", ""),
+        "port": int(port) if str(port).strip() else None,
+        "user": secrets.get("smtpUser", ""),
+        "pass": secrets.get("smtpPass", ""),
+        "from_address": secrets.get("smtpFromAddress", ""),
+    }
+
+
+def run_local_workflow(task: str, secrets: Optional[Dict[str, str]] = None, default_recipient: Optional[str] = None) -> Dict[str, Any]:
     lowered = task.lower()
     query = _extract_query(task)
     step_results: List[Dict[str, Any]] = []
     artifacts: Dict[str, Any] = {"query": query}
     summary_text = ""
+    smtp_config = _build_smtp_config(secrets)
 
     workflow_plan = {
         "query": query,
@@ -97,15 +110,20 @@ def run_local_workflow(task: str) -> Dict[str, Any]:
         )
 
     if workflow_plan["email"]:
-        recipient = _extract_email(task)
+        recipient = _extract_email(task) or default_recipient
         email_body = summary_text or "Workflow completed."
         if recipient:
-            email_result = EmailSender().execute(to=recipient, subject="Workflow Automation Result", body=email_body)
+            email_result = EmailSender().execute(
+                to=recipient,
+                subject="Workflow Automation Result",
+                body=email_body,
+                smtp_config=smtp_config,
+            )
         else:
             email_result = {
                 "success": True,
                 "draft": True,
-                "message": "No recipient found in task. Draft email content prepared instead of sending.",
+                "message": "No recipient found in task or user settings. Draft email content prepared instead of sending.",
                 "body": email_body,
             }
         artifacts["email_result"] = email_result

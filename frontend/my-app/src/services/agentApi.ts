@@ -74,6 +74,11 @@ export interface DashboardSettings {
     geminiApiKey: string
     slackWebhookUrl: string
     sendGridApiKey: string
+    smtpHost: string
+    smtpPort: string
+    smtpUser: string
+    smtpPass: string
+    smtpFromAddress: string
   }
   updatedAt?: string
 }

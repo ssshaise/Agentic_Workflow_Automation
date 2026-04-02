@@ -133,7 +133,8 @@ export default function DashboardPageConnected() {
     }
     setIsBusy(true)
     try {
-      const response = await queueAgentWorkflow(task, "user@example.com", workflowId)
+      const recipient = settings?.notifications.notificationEmail?.trim() || undefined
+      const response = await queueAgentWorkflow(task, recipient, workflowId)
       setLatestRun(response.latestRun)
       setStatusMessage(response.message)
       setPollingRunId(response.latestRun.id)

@@ -84,7 +84,16 @@ class ProductionStore:
         return {
             "general": {"defaultModel": "Gemini 2.5 Flash", "timezone": "IST (UTC+5:30)", "maxConcurrentWorkflows": "3"},
             "notifications": {"emailOnWorkflowComplete": True, "emailOnFailure": True, "slackWebhookAlerts": False, "notificationEmail": "you@company.com"},
-            "apiKeys": {"geminiApiKey": "", "slackWebhookUrl": "", "sendGridApiKey": ""},
+            "apiKeys": {
+                "geminiApiKey": "",
+                "slackWebhookUrl": "",
+                "sendGridApiKey": "",
+                "smtpHost": "",
+                "smtpPort": "587",
+                "smtpUser": "",
+                "smtpPass": "",
+                "smtpFromAddress": "",
+            },
             "updatedAt": iso_now(),
         }
 
@@ -423,18 +432,26 @@ class ProductionStore:
         self._save()
 
     def get_settings(self, user_id: str) -> Dict[str, Any]:
+        base = self._base_settings()
         settings = deep_copy_json(self._get_user(user_id)["settings"])
+        settings["general"] = {**base["general"], **settings.get("general", {})}
+        settings["notifications"] = {**base["notifications"], **settings.get("notifications", {})}
+        settings["apiKeys"] = {**base["apiKeys"], **settings.get("apiKeys", {})}
         for key, value in self._get_user(user_id).get("secrets", {}).items():
-            if key == "geminiApiKey":
-                settings["apiKeys"]["geminiApiKey"] = value
+            if key in settings.get("apiKeys", {}):
+                settings["apiKeys"][key] = value
         return settings
 
     def save_settings(self, user_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        base = self._base_settings()
         config = deep_copy_json(config)
+        config["general"] = {**base["general"], **config.get("general", {})}
+        config["notifications"] = {**base["notifications"], **config.get("notifications", {})}
+        config["apiKeys"] = {**base["apiKeys"], **config.get("apiKeys", {})}
         config["updatedAt"] = iso_now()
         api_keys = config.get("apiKeys", {})
         secrets_map = self._get_user(user_id).setdefault("secrets", {})
-        for key in ["geminiApiKey", "slackWebhookUrl", "sendGridApiKey"]:
+        for key in ["geminiApiKey", "slackWebhookUrl", "sendGridApiKey", "smtpHost", "smtpPort", "smtpUser", "smtpPass", "smtpFromAddress"]:
             secrets_map[key] = api_keys.get(key, "")
         self._get_user(user_id)["settings"] = config
         self._save()

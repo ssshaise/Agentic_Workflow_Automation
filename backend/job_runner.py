@@ -14,7 +14,7 @@ class WorkflowJobRunner:
         self,
         *,
         store,
-        execute_task: Callable[[str, Dict[str, str]], Dict],
+        execute_task: Callable[[str, Dict[str, str], Optional[str]], Dict],
         poll_interval_seconds: int = 2,
         lease_seconds: int = 120,
     ) -> None:
@@ -78,7 +78,8 @@ class WorkflowJobRunner:
                 execution_mode="queued",
             )
             secrets = self.store.get_user_secrets(user_id)
-            execution = self.execute_task(str(job["task"]), secrets)
+            user = self.store.get_public_user(user_id)
+            execution = self.execute_task(str(job["task"]), secrets, user.get("email"))
             self.store.update_run(
                 user_id,
                 run_id,

@@ -11,7 +11,7 @@ export default function AgentAutomation() {
     try {
       setStatus("Running workflow...");
       setError("");
-      const res = await invokeAgentWorkflow(task, "user@example.com");
+      const res = await invokeAgentWorkflow(task);
       setStatus("Finished");
       setResult(res);
     } catch (err: any) {
