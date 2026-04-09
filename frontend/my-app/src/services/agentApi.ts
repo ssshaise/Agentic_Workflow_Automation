@@ -1,3 +1,5 @@
+import { clearAuthSession, setAuthSession, type StoredAuthUser } from "./authStorage"
+
 export type WorkflowStatus = "running" | "active" | "paused" | "failed" | "completed"
 
 export interface WorkflowItem {
@@ -117,21 +119,43 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function register(email: string, password: string, name?: string) {
-  return apiRequest<{ user: { id: string; email: string; name: string }; token: string }>("/api/auth/register", {
+  const response = await apiRequest<{ user: StoredAuthUser; token: string }>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password, name }),
   })
+  setAuthSession(response.token, response.user)
+  return response
 }
 
 export async function login(email: string, password: string) {
-  return apiRequest<{ token: string; user: { id: string; email: string; name: string } }>("/api/auth/login", {
+  const response = await apiRequest<{ token: string; user: StoredAuthUser }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   })
+  setAuthSession(response.token, response.user)
+  return response
 }
 
 export async function getCurrentUser() {
-  return apiRequest<{ user: { id: string; email: string; name: string } }>("/api/auth/me")
+  return apiRequest<{ user: StoredAuthUser }>("/api/auth/me")
+}
+
+export async function logout() {
+  try {
+    return await apiRequest<{ status: string }>("/api/auth/logout", { method: "POST" })
+  } finally {
+    clearAuthSession()
+  }
+}
+
+export async function requestEmailVerification() {
+  return apiRequest<{ status: string; message: string; verificationUrl?: string }>("/api/auth/verify-email/request", {
+    method: "POST",
+  })
+}
+
+export async function confirmEmailVerification(token: string) {
+  return apiRequest<{ status: string; message: string; user?: StoredAuthUser }>(`/api/auth/verify-email/confirm?token=${encodeURIComponent(token)}`)
 }
 
 export async function getDashboardSnapshot() {

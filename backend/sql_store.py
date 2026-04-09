@@ -37,8 +37,10 @@ except ImportError:
 
 try:
     from .config import DATABASE_URL, SECRET_ENCRYPTION_KEY
+    from .tools.email_sender import EmailSender
 except ImportError:
     from config import DATABASE_URL, SECRET_ENCRYPTION_KEY
+    from tools.email_sender import EmailSender
 
 
 UTC = timezone.utc
@@ -129,6 +131,17 @@ class AuthToken(Base):
 
     token: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class EmailVerificationToken(Base):
+    __tablename__ = "email_verification_tokens"
+
+    token: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -286,6 +299,11 @@ class DatabaseStore:
                 "smtpPass": "",
                 "smtpFromAddress": "",
             },
+            "auth": {
+                "emailVerified": False,
+                "emailVerificationRequestedAt": None,
+                "emailVerifiedAt": None,
+            },
             "updatedAt": iso_now(),
         }
 
@@ -300,14 +318,23 @@ class DatabaseStore:
 
     def _seed_demo_user(self) -> None:
         with self.session_scope() as session:
-            if session.get(User, "demo"):
+            existing_demo = session.get(User, "demo")
+            if existing_demo:
+                settings = copy.deepcopy(existing_demo.settings_json or self._base_settings())
+                settings["auth"] = {
+                    **self._base_settings()["auth"],
+                    **settings.get("auth", {}),
+                    "emailVerified": True,
+                    "emailVerifiedAt": settings.get("auth", {}).get("emailVerifiedAt") or iso_now(),
+                }
+                existing_demo.settings_json = settings
                 return
             user = User(
                 id="demo",
                 email="demo@flow.local",
                 name="Demo User",
                 password_hash="",
-                settings_json=self._base_settings(),
+                settings_json={**self._base_settings(), "auth": {"emailVerified": True, "emailVerificationRequestedAt": None, "emailVerifiedAt": iso_now()}},
                 agent_configs_json=self._base_agent_configs(),
             )
             session.add(user)
@@ -352,7 +379,14 @@ class DatabaseStore:
             )
 
     def _public_user(self, user: User) -> Dict[str, Any]:
-        return {"id": user.id, "email": user.email, "name": user.name, "createdAt": ensure_utc(user.created_at).isoformat()}
+        auth_settings = (user.settings_json or {}).get("auth", {})
+        return {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "createdAt": ensure_utc(user.created_at).isoformat(),
+            "emailVerified": bool(auth_settings.get("emailVerified", False)),
+        }
 
     def _serialize_workflow(self, workflow: Workflow) -> Dict[str, Any]:
         return {
@@ -551,11 +585,12 @@ class DatabaseStore:
         try:
             return self.cipher.decrypt(value.encode("utf-8")).decode("utf-8")
         except InvalidToken:
-            return ""
-
-    def _next_notification_id(self, session: Session, user_id: str) -> int:
-        value = session.scalar(select(func.max(Notification.id)).where(Notification.user_id == user_id))
-        return int(value or 0) + 1
+            # Backward compatibility for secrets saved when the lightweight
+            # base64-only fallback cipher was active.
+            try:
+                return base64.urlsafe_b64decode(value.encode("utf-8")).decode("utf-8")
+            except Exception:
+                return ""
 
     def _save_secret_map(self, session: Session, user_id: str, secrets_map: Dict[str, str]) -> None:
         existing = {row.secret_key: row for row in session.scalars(select(SecretRecord).where(SecretRecord.user_id == user_id)).all()}
@@ -601,6 +636,14 @@ class DatabaseStore:
             session.add(AuthToken(token=token, user_id=user.id))
             return {"token": token, "user": self._public_user(user)}
 
+    def logout_user(self, token: str) -> None:
+        if not token:
+            return
+        with self.session_scope() as session:
+            row = session.get(AuthToken, token)
+            if row:
+                session.delete(row)
+
     def get_user_from_token(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
         if not token:
             return None
@@ -625,7 +668,7 @@ class DatabaseStore:
 
     def add_notification(self, user_id: str, title: str, description: str) -> None:
         with self.session_scope() as session:
-            session.add(Notification(id=self._next_notification_id(session, user_id), user_id=user_id, title=title, desc=description, time_label="Just now", is_read=False))
+            session.add(Notification(user_id=user_id, title=title, desc=description, time_label="Just now", is_read=False))
 
     def list_notifications(self, user_id: str) -> List[Dict[str, Any]]:
         with self.session_scope() as session:
@@ -716,6 +759,8 @@ class DatabaseStore:
         settings["notifications"] = {**base["notifications"], **settings["notifications"]}
         settings.setdefault("apiKeys", {})
         settings["apiKeys"] = {**base["apiKeys"], **settings["apiKeys"]}
+        settings.setdefault("auth", {})
+        settings["auth"] = {**base["auth"], **settings["auth"]}
         settings["apiKeys"].update(self.get_user_secrets(user_id))
         return settings
 
@@ -725,6 +770,8 @@ class DatabaseStore:
         config["general"] = {**base["general"], **config.get("general", {})}
         config["notifications"] = {**base["notifications"], **config.get("notifications", {})}
         config["apiKeys"] = {**base["apiKeys"], **config.get("apiKeys", {})}
+        existing = self.get_settings(user_id)
+        config["auth"] = {**base["auth"], **existing.get("auth", {}), **config.get("auth", {})}
         config["updatedAt"] = iso_now()
         api_keys = config.get("apiKeys", {})
         secret_keys = ["geminiApiKey", "slackWebhookUrl", "sendGridApiKey", "smtpHost", "smtpPort", "smtpUser", "smtpPass", "smtpFromAddress"]
@@ -737,6 +784,68 @@ class DatabaseStore:
         result = _deep_copy_json(config)
         result["apiKeys"].update(secrets_map)
         return result
+
+    def create_email_verification_request(self, user_id: str, app_base_url: str) -> Dict[str, Any]:
+        with self.session_scope() as session:
+            user = session.get(User, user_id)
+            if not user:
+                raise KeyError("User not found.")
+            token = secrets.token_urlsafe(32)
+            expires_at = utc_now() + timedelta(hours=24)
+            session.query(EmailVerificationToken).filter(
+                EmailVerificationToken.user_id == user_id,
+                EmailVerificationToken.consumed_at.is_(None),
+            ).delete()
+            session.add(EmailVerificationToken(token=token, user_id=user_id, email=user.email, expires_at=expires_at))
+            settings = copy.deepcopy(user.settings_json or self._base_settings())
+            settings["auth"] = {
+                **self._base_settings()["auth"],
+                **settings.get("auth", {}),
+                "emailVerificationRequestedAt": iso_now(),
+            }
+            user.settings_json = settings
+            verification_url = f"{app_base_url.rstrip('/')}/verify-email?token={token}"
+            message = "Verification link created."
+            try:
+                email_result = EmailSender().execute(
+                    to=user.email,
+                    subject="Verify your Flow account email",
+                    body=(
+                        "Confirm your email address to unlock account-based email features.\n\n"
+                        f"Verification link: {verification_url}\n\n"
+                        "This link expires in 24 hours."
+                    ),
+                )
+                if not email_result.get("success"):
+                    message = f"Verification token created, but the email could not be sent automatically: {email_result.get('error', 'Unknown email error')}"
+                else:
+                    message = "Verification email sent."
+            except Exception as exc:
+                message = f"Verification token created, but email delivery is not configured yet: {exc}"
+            return {"status": "ok", "message": message, "verificationUrl": verification_url}
+
+    def verify_email_token(self, token: str) -> Dict[str, Any]:
+        with self.session_scope() as session:
+            row = session.get(EmailVerificationToken, token)
+            if not row:
+                raise ValueError("Invalid verification token.")
+            if row.consumed_at is not None:
+                raise ValueError("Verification token has already been used.")
+            if ensure_utc(row.expires_at) < utc_now():
+                raise ValueError("Verification token has expired.")
+            user = session.get(User, row.user_id)
+            if not user:
+                raise ValueError("User not found for verification token.")
+            row.consumed_at = utc_now()
+            settings = copy.deepcopy(user.settings_json or self._base_settings())
+            settings["auth"] = {
+                **self._base_settings()["auth"],
+                **settings.get("auth", {}),
+                "emailVerified": True,
+                "emailVerifiedAt": iso_now(),
+            }
+            user.settings_json = settings
+            return {"status": "ok", "message": "Email verified successfully.", "user": self._public_user(user)}
 
     def get_agent_config(self, user_id: str, agent: str) -> Dict[str, Any]:
         with self.session_scope() as session:

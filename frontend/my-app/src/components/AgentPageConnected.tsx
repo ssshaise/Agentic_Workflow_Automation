@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { getAgentConfig, saveAgentConfig, testAgentConfig, type LatestRun } from "../services/agentApi"
+import { useMemo } from "react"
+import type { LatestRun } from "../services/agentApi"
 
 interface AgentPageProps {
   agent: string
@@ -13,58 +13,60 @@ interface AgentPageProps {
 const agentConfig: Record<string, {
   icon: string
   color: string
+  title: string
   description: string
-  fields: { label: string; placeholder: string; type?: string }[]
+  bullets: string[]
 }> = {
   "Web Search": {
     icon: "language",
     color: "#be9dff",
-    description: "Configure the web search agent to browse, scrape, and extract information from any website.",
-    fields: [
-      { label: "Target URL or Query", placeholder: "https://arxiv.org/list/cs.AI/recent" },
-      { label: "Search Depth", placeholder: "2 (number of pages to follow)" },
-      { label: "Extract Fields", placeholder: "title, abstract, authors, date" },
-      { label: "Filter Keywords", placeholder: "transformer, LLM, agent (comma-separated)" },
+    title: "Web Search",
+    description: "FLOW handles search automatically when a task needs web or arXiv results.",
+    bullets: [
+      "No manual setup is required.",
+      "The workflow picks search sources from the task itself.",
+      "Results are fed directly into the next automation step.",
     ],
   },
   "Python Executor": {
     icon: "terminal",
     color: "#4ade80",
-    description: "Run Python scripts, process data, call APIs, and execute custom logic within your workflow.",
-    fields: [
-      { label: "Script Name", placeholder: "data_processor.py" },
-      { label: "Python Version", placeholder: "3.11" },
-      { label: "Required Packages", placeholder: "pandas, requests, openai" },
-      { label: "Environment Variables", placeholder: "API_KEY=xxx, DB_URL=xxx" },
+    title: "Python Executor",
+    description: "FLOW uses the execution layer internally for formatting, transformation, and workflow glue.",
+    bullets: [
+      "Users do not need to supply scripts or packages for standard workflows.",
+      "The agent chooses when structured processing is needed.",
+      "Failures are surfaced in the run details automatically.",
     ],
   },
   "Email Sender": {
     icon: "mail",
     color: "#f59e0b",
-    description: "Send automated emails with AI-generated content, summaries, or alerts.",
-    fields: [
-      { label: "From Address", placeholder: "agent@yourdomain.com" },
-      { label: "To Address(es)", placeholder: "team@company.com, manager@company.com" },
-      { label: "Subject Template", placeholder: "Daily Digest: {date} - {summary_title}" },
-      { label: "Send Condition", placeholder: "Always / On error / On new results" },
+    title: "Email Delivery",
+    description: "FLOW now sends workflow emails from the platform mailbox instead of requiring each user to configure SMTP or app passwords.",
+    bullets: [
+      "Add only a recipient inbox in Settings or include an email address in the prompt.",
+      "FLOW sends the message from the configured company mailbox.",
+      "Delivery errors appear directly in the run summary.",
     ],
   },
   Database: {
     icon: "database",
     color: "#60a5fa",
-    description: "Read from or write to databases as part of your automated workflow pipeline.",
-    fields: [
-      { label: "Connection String", placeholder: "postgresql://user:pass@host:5432/db", type: "password" },
-      { label: "Query / Operation", placeholder: "SELECT * FROM papers WHERE date > NOW() - INTERVAL '1 day'" },
-      { label: "Write Table", placeholder: "workflow_results" },
-      { label: "Primary Key Field", placeholder: "id" },
+    title: "Database",
+    description: "Database storage is managed behind the scenes for runs, logs, notifications, and saved workflow state.",
+    bullets: [
+      "No end-user database configuration is needed.",
+      "FLOW stores run history automatically.",
+      "Advanced data integrations can be added later as product features instead of agent config fields.",
     ],
   },
   History: {
     icon: "history",
     color: "#a78bfa",
-    description: "Browse past workflow runs, view logs, and replay or clone previous executions.",
-    fields: [],
+    title: "History",
+    description: "Browse previous runs, replay them, or clone them into new workflows.",
+    bullets: [],
   },
 }
 
@@ -74,16 +76,8 @@ const statusColor: Record<string, string> = {
   running: "#be9dff",
 }
 
-export default function AgentPageConnected({ agent, history, onReplayHistory, onCloneHistory, onStatusMessage, onRefresh }: AgentPageProps) {
+export default function AgentPageConnected({ agent, history, onReplayHistory, onCloneHistory }: AgentPageProps) {
   const config = agentConfig[agent]
-  const [values, setValues] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (agent === "History") return
-    getAgentConfig(agent)
-      .then(response => setValues(response.values || {}))
-      .catch(() => onStatusMessage?.("Failed to load agent config."))
-  }, [agent, onStatusMessage])
 
   const historyItems = useMemo(() => history.map(item => ({
     id: item.id,
@@ -125,71 +119,31 @@ export default function AgentPageConnected({ agent, history, onReplayHistory, on
     )
   }
 
-  const save = async () => {
-    await saveAgentConfig(agent, values)
-    onStatusMessage?.(`${agent} config saved.`)
-    await onRefresh?.()
-  }
-
-  const test = async () => {
-    const response = await testAgentConfig(agent)
-    onStatusMessage?.(response.message)
-    await onRefresh?.()
-  }
-
   return (
-    <div style={{ padding: "2.5rem 2rem", maxWidth: 720 }}>
+    <div style={{ padding: "2.5rem 2rem", maxWidth: 760 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "2rem" }}>
         <div style={{ width: 48, height: 48, borderRadius: 14, background: `${config.color}18`, border: `1px solid ${config.color}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span className="material-symbols-outlined" style={{ fontSize: 24, color: config.color }}>{config.icon}</span>
         </div>
         <div>
-          <div className="section-eyebrow" style={{ marginBottom: 0 }}>Agent Configuration</div>
-          <h2 style={{ fontFamily: "Manrope,sans-serif", fontSize: "1.375rem", fontWeight: 700, color: "#eee4fc" }}>{agent}</h2>
+          <div className="section-eyebrow" style={{ marginBottom: 0 }}>Managed Capability</div>
+          <h2 style={{ fontFamily: "Manrope,sans-serif", fontSize: "1.375rem", fontWeight: 700, color: "#eee4fc" }}>{config.title}</h2>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.875rem", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 999, fontSize: "0.6875rem", fontWeight: 600, color: "#4ade80" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", animation: "pulse 2s infinite" }} /> Ready
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80" }} /> Managed by FLOW
         </div>
       </div>
 
-      <p style={{ color: "rgba(238,228,252,0.5)", fontSize: "0.875rem", lineHeight: 1.7, marginBottom: "2rem" }}>{config.description}</p>
-
-      <div className="liquid-glass" style={{ borderRadius: 16, padding: "1.5rem", marginBottom: "1.25rem" }}>
-        <div style={{ fontFamily: "Manrope,sans-serif", fontWeight: 600, fontSize: "0.8125rem", marginBottom: "1.25rem", color: "#eee4fc" }}>Configuration</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {config.fields.map(f => (
-            <div key={f.label}>
-              <label style={{ display: "block", fontSize: "0.6875rem", fontWeight: 600, color: "rgba(238,228,252,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>
-                {f.label}
-              </label>
-              <input
-                type={f.type || "text"}
-                value={values[f.label] ?? ""}
-                placeholder={f.placeholder}
-                style={{
-                  width: "100%", background: "rgba(41,34,58,0.5)",
-                  border: "1px solid rgba(190,157,255,0.12)",
-                  borderRadius: 10, padding: "0.625rem 0.875rem",
-                  color: "#eee4fc", fontFamily: "Inter,sans-serif",
-                  fontSize: "0.875rem", outline: "none",
-                  transition: "border-color 0.2s",
-                }}
-                onChange={e => setValues(current => ({ ...current, [f.label]: e.target.value }))}
-                onFocus={e => e.target.style.borderColor = "rgba(190,157,255,0.4)"}
-                onBlur={e => e.target.style.borderColor = "rgba(190,157,255,0.12)"}
-              />
+      <div className="liquid-glass" style={{ borderRadius: 16, padding: "1.5rem" }}>
+        <p style={{ color: "rgba(238,228,252,0.6)", fontSize: "0.96rem", lineHeight: 1.8, marginBottom: "1.25rem" }}>{config.description}</p>
+        <div style={{ display: "grid", gap: "0.75rem" }}>
+          {config.bullets.map(item => (
+            <div key={item} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", padding: "0.9rem 1rem", borderRadius: 14, background: "rgba(41,34,58,0.5)", border: "1px solid rgba(190,157,255,0.08)" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: config.color, marginTop: 1 }}>task_alt</span>
+              <div style={{ color: "rgba(238,228,252,0.62)", lineHeight: 1.65, fontSize: "0.88rem" }}>{item}</div>
             </div>
           ))}
         </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "0.75rem" }}>
-        <button className="btn-primary" style={{ borderRadius: 10 }} onClick={save}>
-          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>save</span> Save Config
-        </button>
-        <button className="btn-glass" style={{ borderRadius: 10 }} onClick={test}>
-          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>play_arrow</span> Test Agent
-        </button>
       </div>
     </div>
   )

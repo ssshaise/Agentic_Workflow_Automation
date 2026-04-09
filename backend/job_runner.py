@@ -79,7 +79,9 @@ class WorkflowJobRunner:
             )
             secrets = self.store.get_user_secrets(user_id)
             user = self.store.get_public_user(user_id)
-            execution = self.execute_task(str(job["task"]), secrets, user.get("email"))
+            settings = self.store.get_settings(user_id)
+            notification_email = (settings.get("notifications", {}) or {}).get("notificationEmail")
+            execution = self.execute_task(str(job["task"]), secrets, notification_email or user.get("email"))
             self.store.update_run(
                 user_id,
                 run_id,

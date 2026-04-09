@@ -7,8 +7,10 @@ TOOL_RETRY_POLICY: Dict[str, int] = {
     "http_client": 2,
     "email_sender": 1,
     "db_store": 1,
+    "database_query": 1,
     "summarize_content": 0,
     "python_exec": 0,
+    "python_executor": 0,
     "file_system": 0,
 }
 

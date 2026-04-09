@@ -3,7 +3,7 @@ from collections import defaultdict, deque
 from time import time
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ try:
     from .local_workflow import run_local_workflow
     from .network import probe_url, should_ignore_env_proxies
     from .sql_store import DatabaseStore
+    from .tools.email_sender import EmailSender
 except ImportError:
     from config import GEMINI_API_KEY
     from audit import emit_structured_log
@@ -21,6 +22,7 @@ except ImportError:
     from local_workflow import run_local_workflow
     from network import probe_url, should_ignore_env_proxies
     from sql_store import DatabaseStore
+    from tools.email_sender import EmailSender
 
 try:
     from .workflows.langgraph_workflow import AgenticWorkflow
@@ -95,19 +97,60 @@ def get_engine(api_key: Optional[str] = None) -> Optional[AgenticWorkflow]:
     return AgenticWorkflow(api_key=effective_key)
 
 
+def _should_use_managed_local_flow(task: str) -> bool:
+    lowered = task.lower()
+    return any(token in lowered for token in ["email", "mail", "send"]) or "arxiv" in lowered
+
+
+def _summarize_execution(task: str, results: list[dict[str, Any]]) -> str:
+    email_steps = [step for step in results if step.get("step", {}).get("action") == "email_sender"]
+    if email_steps:
+        email_result = (email_steps[-1].get("execution") or {}).get("result") or {}
+        if isinstance(email_result, dict):
+            recipient = (email_steps[-1].get("step", {}).get("inputs") or {}).get("to")
+            if email_result.get("success"):
+                if email_result.get("draft"):
+                    return "Workflow completed, but only an email draft was prepared."
+                return f"Workflow completed and email delivery was accepted for {recipient}." if recipient else "Workflow completed and email delivery was accepted."
+            return f"Workflow completed, but email delivery failed: {email_result.get('error', 'Unknown email error')}"
+    invalid_steps = [step for step in results if not (step.get("validation") or {}).get("valid", True)]
+    if invalid_steps:
+        issue = (invalid_steps[-1].get("validation") or {}).get("issue") or "A workflow step did not validate cleanly."
+        return f"Workflow completed with issues for task: {task}. {issue}"
+    return "Workflow executed successfully."
+
+
+def _format_gemini_fallback_message(exc: Exception) -> str:
+    detail = str(exc)
+    if "503" in detail:
+        return "Gemini is temporarily unavailable right now, so the local automation engine ran the workflow instead."
+    if "429" in detail:
+        return "Gemini rate-limited this request, so the local automation engine ran the workflow instead."
+    if "401" in detail or "403" in detail:
+        return "Gemini authentication failed, so the local automation engine ran the workflow instead. Please re-check the Gemini API key."
+    return f"Gemini planning failed, so the local automation engine executed the workflow instead: {detail}"
+
+
 def execute_task(task: str, secrets: Optional[Dict[str, str]] = None, user_email: Optional[str] = None) -> Dict[str, Any]:
     secrets = secrets or {}
+    if _should_use_managed_local_flow(task):
+        local_execution = run_local_workflow(task, secrets=secrets, default_recipient=user_email)
+        local_execution["message"] = f"FLOW handled this request with the managed automation pipeline. {_summarize_execution(task, local_execution['results'])}"
+        local_execution["mode"] = "flow-managed"
+        return local_execution
     engine = get_engine(secrets.get("geminiApiKey"))
     if engine is None:
         local_execution = run_local_workflow(task, secrets=secrets, default_recipient=user_email)
-        local_execution["message"] = "Gemini engine unavailable, executed the deterministic local workflow engine instead."
+        local_execution["message"] = f"Gemini engine unavailable, so FLOW used the managed automation pipeline instead. {_summarize_execution(task, local_execution['results'])}"
+        local_execution["mode"] = "flow-managed"
         return local_execution
     try:
-        results = engine.run(task)
-        return {"results": results, "used_fallback": False, "mode": "gemini", "message": "Workflow executed successfully."}
+        results = engine.run(task, execution_context={"default_recipient": user_email})
+        return {"results": results, "used_fallback": False, "mode": "gemini", "message": _summarize_execution(task, results)}
     except Exception as exc:
         local_execution = run_local_workflow(task, secrets=secrets, default_recipient=user_email)
-        local_execution["message"] = f"Gemini planning failed, so the local automation engine executed the workflow instead: {exc}"
+        local_execution["message"] = f"{_format_gemini_fallback_message(exc)} {_summarize_execution(task, local_execution['results'])}"
+        local_execution["mode"] = "flow-managed"
         return local_execution
 
 
@@ -180,6 +223,12 @@ async def runtime_health(current_user: Dict[str, Any] = Depends(get_current_user
     }
 
 
+@app.get("/api/health/email")
+async def email_health(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    enforce_rate_limit(f"email_health:{current_user['id']}", limit=12, window_seconds=60)
+    return EmailSender().healthcheck()
+
+
 @app.post("/api/auth/register")
 async def register(req: AuthRegisterRequest) -> Dict[str, Any]:
     try:
@@ -203,9 +252,40 @@ async def login(req: AuthLoginRequest) -> Dict[str, Any]:
     return login_payload
 
 
+@app.post("/api/auth/logout")
+async def logout(current_user: Dict[str, Any] = Depends(get_current_user), authorization: Optional[str] = Header(default=None)) -> Dict[str, str]:
+    token = _extract_token(authorization)
+    if token:
+        store.logout_user(token)
+        store.record_audit_event("auth.logout", user_id=current_user["id"], component="auth", payload={"email": current_user["email"]})
+        emit_structured_log("auth.logout", component="auth", user_id=current_user["id"], payload={"email": current_user["email"]})
+    return {"status": "ok"}
+
+
 @app.get("/api/auth/me")
 async def me(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     return {"user": current_user}
+
+
+@app.post("/api/auth/verify-email/request")
+async def request_verify_email(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    payload = store.create_email_verification_request(current_user["id"], str(request.base_url).rstrip("/"))
+    store.record_audit_event("auth.verify_email.requested", user_id=current_user["id"], component="auth", payload={"email": current_user["email"]})
+    emit_structured_log("auth.verify_email.requested", component="auth", user_id=current_user["id"], payload={"email": current_user["email"]})
+    return payload
+
+
+@app.get("/api/auth/verify-email/confirm")
+async def confirm_verify_email(token: str) -> Dict[str, Any]:
+    try:
+        payload = store.verify_email_token(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    user = payload.get("user", {})
+    if user.get("id"):
+        store.record_audit_event("auth.verify_email.completed", user_id=user["id"], component="auth", payload={"email": user.get("email")})
+        emit_structured_log("auth.verify_email.completed", component="auth", user_id=user["id"], payload={"email": user.get("email")})
+    return payload
 
 
 @app.get("/api/dashboard")

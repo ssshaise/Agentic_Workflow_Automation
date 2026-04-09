@@ -15,9 +15,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(DEFAULT_STATE_DIR / 'flow
 SECRET_ENCRYPTION_KEY = os.getenv("SECRET_ENCRYPTION_KEY", "flow-automation-dev-secret")
 IGNORE_BROKEN_PROXY_ENV = os.getenv("IGNORE_BROKEN_PROXY_ENV", "true").lower() in {"1", "true", "yes", "on"}
 HTTP_TIMEOUT_SECONDS = int(os.getenv("HTTP_TIMEOUT_SECONDS", 30))
-SMTP_CONFIG = {
-    "host": os.getenv("SMTP_HOST"),
-    "port": int(os.getenv("SMTP_PORT", 587)),
-    "user": os.getenv("SMTP_USER"),
-    "pass": os.getenv("SMTP_PASS"),
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "resend").lower()
+RESEND_CONFIG = {
+    "api_key": os.getenv("RESEND_API_KEY"),
+    "from_address": os.getenv("RESEND_FROM_EMAIL") or os.getenv("SMTP_FROM_ADDRESS") or os.getenv("SMTP_USER"),
+    "from_name": os.getenv("RESEND_FROM_NAME", os.getenv("SMTP_FROM_NAME", "FLOW")),
+    "reply_to": os.getenv("RESEND_REPLY_TO"),
+    "base_url": os.getenv("RESEND_BASE_URL", "https://api.resend.com"),
 }

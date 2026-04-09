@@ -1,0 +1,118 @@
+import { useEffect, useState } from "react"
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import AuthCard from "../components/auth/AuthCard"
+import AuthShell from "../components/auth/AuthShell"
+import { confirmEmailVerification, requestEmailVerification } from "../services/agentApi"
+
+export default function VerifyEmailPage() {
+  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const token = searchParams.get("token")
+  const email = (location.state as { email?: string } | null)?.email || ""
+  const [status, setStatus] = useState<"idle" | "loading" | "verified" | "error">("idle")
+  const [message, setMessage] = useState(
+    token
+      ? "Confirming your email verification token."
+      : "Check your inbox for a verification link, then return here once your account email is confirmed."
+  )
+  const [resending, setResending] = useState(false)
+
+  useEffect(() => {
+    if (!token) return
+    let active = true
+    setStatus("loading")
+    confirmEmailVerification(token)
+      .then((response) => {
+        if (!active) return
+        setStatus("verified")
+        setMessage(response.message || "Email verified successfully.")
+        window.setTimeout(() => navigate("/dashboard"), 1200)
+      })
+      .catch((error) => {
+        if (!active) return
+        setStatus("error")
+        setMessage(error instanceof Error ? error.message : "Unable to verify email.")
+      })
+    return () => {
+      active = false
+    }
+  }, [token, navigate])
+
+  async function handleResend() {
+    setResending(true)
+    try {
+      const response = await requestEmailVerification()
+      setStatus("idle")
+      setMessage(response.message || "Verification email sent.")
+    } catch (error) {
+      setStatus("error")
+      setMessage(error instanceof Error ? error.message : "Unable to resend verification.")
+    } finally {
+      setResending(false)
+    }
+  }
+
+  return (
+    <AuthShell
+      title="Verify the identity behind the workflows."
+      subtitle="Account email verification confirms ownership of the Flow login email. Mailbox sending credentials are still configured separately in settings."
+      asideTitle="Why this step matters"
+      asideBody="Verified account email improves trust for notifications, recovery, and user identity. It is not the same as verifying a sender domain or authenticating an SMTP mailbox."
+    >
+      <AuthCard
+        title={status === "verified" ? "Email verified" : "Verify your email"}
+        description="Open the verification link from your inbox. If you already clicked it, this screen will update automatically when opened with the token."
+      >
+        <div style={{ display: "grid", gap: "1rem" }}>
+          <div
+            style={{
+              borderRadius: 16,
+              padding: "1rem",
+              background:
+                status === "verified"
+                  ? "rgba(74,222,128,0.08)"
+                  : status === "error"
+                    ? "rgba(239,68,68,0.08)"
+                    : "rgba(190,157,255,0.08)",
+              border:
+                status === "verified"
+                  ? "1px solid rgba(74,222,128,0.16)"
+                  : status === "error"
+                    ? "1px solid rgba(239,68,68,0.16)"
+                    : "1px solid rgba(190,157,255,0.14)",
+              color:
+                status === "verified"
+                  ? "#b6ffd4"
+                  : status === "error"
+                    ? "#ffbac3"
+                    : "#e8ddff",
+              lineHeight: 1.7,
+              fontSize: "0.92rem",
+            }}
+          >
+            {message}
+          </div>
+
+          {email && (
+            <div style={{ color: "rgba(238,228,252,0.5)", fontSize: "0.82rem" }}>
+              Verification target: <span style={{ color: "#eee4fc" }}>{email}</span>
+            </div>
+          )}
+
+          {!token && (
+            <button className="btn-glass" type="button" onClick={handleResend} disabled={resending} style={{ width: "100%", justifyContent: "center", display: "inline-flex", opacity: resending ? 0.8 : 1 }}>
+              {resending ? "Sending..." : "Resend Verification Email"}
+            </button>
+          )}
+
+          <div style={{ textAlign: "center", color: "rgba(238,228,252,0.52)", fontSize: "0.88rem" }}>
+            <Link to="/login" style={{ color: "#be9dff", textDecoration: "none", fontWeight: 700 }}>
+              Back to sign in
+            </Link>
+          </div>
+        </div>
+      </AuthCard>
+    </AuthShell>
+  )
+}

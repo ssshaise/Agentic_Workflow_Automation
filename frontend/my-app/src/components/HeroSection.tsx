@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Navbar from "./Navbar"
+import { hasAuthSession } from "../services/authStorage"
 
 export default function HeroSection() {
   const navRef = useRef<HTMLElement>(null)
   const navigate = useNavigate()
+  const isAuthenticated = hasAuthSession()
   const titleRef = useRef<HTMLHeadingElement>(null)
   const subtextRef = useRef<HTMLParagraphElement>(null)
   const ctaRef = useRef<HTMLDivElement>(null)
@@ -33,7 +35,9 @@ export default function HeroSection() {
           Autonomous Agentic Workflow<br />Automation Platform
         </p>
         <div ref={ctaRef} className="reveal-hidden" style={{ marginTop:"2rem" }}>
-          <button className="btn-glass" onClick={() => navigate('/dashboard')}>Connect</button>
+          <button className="btn-glass" onClick={() => navigate(isAuthenticated ? "/dashboard" : "/signup")}>
+            {isAuthenticated ? "Open Dashboard" : "Connect"}
+          </button>
         </div>
       </div>
     </section>  

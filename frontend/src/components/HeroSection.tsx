@@ -33,7 +33,7 @@ export default function HeroSection() {
           Autonomous Agentic Workflow<br />Automation Platform
         </p>
         <div ref={ctaRef} className="reveal-hidden" style={{ marginTop:"2rem" }}>
-          <button className="btn-glass" onClick={() => navigate('/dashboard')}>Connect</button>
+          <button className="btn-glass" onClick={() => navigate('/signup')}>Connect</button>
         </div>
       </div>
     </section>  

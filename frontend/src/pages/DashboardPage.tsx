@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import HeroInputSection from "../components/HeroInputSection"
 import ExecutionSection from "../components/ExecutionSection"
 import ReasoningSection from "../components/ReasoningSection"
@@ -6,7 +7,9 @@ import TemplatesSection from "../components/TemplatesSection"
 import AgentPage from "../components/AgentPage"
 import WorkflowsPage from "../components/WorkflowsPage.tsx"
 import LogsPage from "../components/LogsPage.tsx"
-import { SettingsPanel, NotificationsPanel } from "../components/Panels.tsx"
+import { SettingsPanel, NotificationsPanel } from "../components/SettingsPanels.tsx"
+import { logoutUser } from "../services/agentApi"
+import { getStoredAuthUser } from "../services/authStorage"
 
 type NavTab = "dashboard" | "workflows" | "logs"
 type SidebarAgent = "Web Search" | "Python Executor" | "Email Sender" | "Database" | "History"
@@ -20,13 +23,29 @@ const agents: { icon: string; label: SidebarAgent }[] = [
 ]
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard")
   const [activeAgent, setActiveAgent] = useState<SidebarAgent | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [workflowInput, setWorkflowInput] = useState("")
+  const viewer = useMemo(() => getStoredAuthUser(), [])
+  const initials = useMemo(() => {
+    const source = viewer?.name || viewer?.email || "RK"
+    return source
+      .split(/[\s@._-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "RK"
+  }, [viewer])
 
   const isDashboard = activeTab === "dashboard" && activeAgent === null
+
+  async function handleLogout() {
+    await logoutUser()
+    navigate("/login")
+  }
 
   return (
     <>
@@ -85,9 +104,42 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>settings</span>
           </button>
 
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(190,157,255,0.15)", border: "1px solid rgba(190,157,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6875rem", fontWeight: 700, color: "#be9dff", cursor: "pointer" }}>
-            RK
-          </div>
+          <button
+            onClick={handleLogout}
+            title={viewer ? `Sign out ${viewer.email}` : "Sign out"}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              background: "rgba(190,157,255,0.15)",
+              border: "1px solid rgba(190,157,255,0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "0.6875rem",
+              fontWeight: 700,
+              color: "#be9dff",
+              cursor: "pointer",
+            }}
+          >
+            {initials}
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{
+              background: "rgba(41,34,58,0.5)",
+              border: "1px solid rgba(190,157,255,0.12)",
+              color: "rgba(238,228,252,0.72)",
+              cursor: "pointer",
+              padding: "0.45rem 0.8rem",
+              borderRadius: 8,
+              fontFamily: "Manrope,sans-serif",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+            }}
+          >
+            Logout
+          </button>
         </div>
       </nav>
 

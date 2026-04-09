@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import type { DashboardSettings, NotificationItem } from "../services/agentApi"
 
 interface SettingsProps {
@@ -12,194 +12,215 @@ interface NotificationsProps {
   notifications: NotificationItem[]
 }
 
-type EmailProvider = "gmail" | "outlook" | "yahoo" | "custom"
+const modelOptions = ["Gemini 2.5 Flash", "Gemini 1.5 Pro", "GPT-4o", "Claude 3.5"]
+const concurrencyOptions = ["1", "2", "3", "5", "10"]
 
-const providerPresets: Record<Exclude<EmailProvider, "custom">, { label: string; host: string; port: string; help: string }> = {
-  gmail: { label: "Gmail", host: "smtp.gmail.com", port: "587", help: "Use your Gmail address and a Google app password." },
-  outlook: { label: "Outlook", host: "smtp.office365.com", port: "587", help: "Works for Outlook, Hotmail, and many Microsoft 365 accounts." },
-  yahoo: { label: "Yahoo", host: "smtp.mail.yahoo.com", port: "587", help: "Use a Yahoo app password for sending." },
+const panelShell = "linear-gradient(180deg, rgba(17,12,30,0.98) 0%, rgba(12,9,22,0.98) 100%)"
+const cardShell = "linear-gradient(180deg, rgba(30,22,49,0.82) 0%, rgba(19,13,32,0.92) 100%)"
+const borderColor = "rgba(190,157,255,0.14)"
+const inputStyle = {
+  width: "100%",
+  padding: "0.85rem 0.95rem",
+  borderRadius: 14,
+  background: "rgba(14,10,24,0.95)",
+  border: "1px solid rgba(190,157,255,0.14)",
+  color: "#eee4fc",
+  outline: "none",
+  boxSizing: "border-box" as const,
+  fontSize: "0.92rem",
+}
+const selectStyle = {
+  ...inputStyle,
+  appearance: "none" as const,
+  WebkitAppearance: "none" as const,
+  MozAppearance: "none" as const,
+  cursor: "pointer",
 }
 
-function isPresetProvider(provider: EmailProvider): provider is Exclude<EmailProvider, "custom"> {
-  return provider !== "custom"
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string
+  hint: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "1rem",
+        padding: "0.95rem 1rem",
+        borderRadius: 16,
+        border: `1px solid ${checked ? "rgba(190,157,255,0.28)" : "rgba(190,157,255,0.12)"}`,
+        background: checked ? "rgba(190,157,255,0.08)" : "rgba(14,10,24,0.78)",
+        color: "#eee4fc",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: "0.2rem" }}>{label}</div>
+        <div style={{ fontSize: "0.78rem", color: "rgba(238,228,252,0.5)", lineHeight: 1.55 }}>{hint}</div>
+      </div>
+      <div
+        style={{
+          width: 46,
+          height: 26,
+          borderRadius: 999,
+          background: checked ? "linear-gradient(135deg, #be9dff, #dbc4ff)" : "rgba(255,255,255,0.12)",
+          position: "relative",
+          flexShrink: 0,
+          transition: "all 0.2s ease",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 3,
+            left: checked ? 23 : 3,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: checked ? "#3d0088" : "#eee4fc",
+            transition: "left 0.2s ease, background 0.2s ease",
+          }}
+        />
+      </div>
+    </button>
+  )
 }
 
-function inferProvider(settings: DashboardSettings): EmailProvider {
-  const host = settings.apiKeys.smtpHost?.toLowerCase() || ""
-  const email = settings.notifications.notificationEmail?.toLowerCase() || settings.apiKeys.smtpUser?.toLowerCase() || ""
-  if (host.includes("gmail") || email.endsWith("@gmail.com")) return "gmail"
-  if (host.includes("office365") || host.includes("outlook") || email.endsWith("@outlook.com") || email.endsWith("@hotmail.com") || email.endsWith("@live.com")) return "outlook"
-  if (host.includes("yahoo") || email.endsWith("@yahoo.com")) return "yahoo"
-  return "custom"
-}
-
-function applyProviderPreset(settings: DashboardSettings, provider: EmailProvider): DashboardSettings {
-  if (!isPresetProvider(provider)) {
-    return settings
-  }
-  const preset = providerPresets[provider]
-  const senderEmail = settings.notifications.notificationEmail || settings.apiKeys.smtpUser || settings.apiKeys.smtpFromAddress
-  return {
-    ...settings,
-    apiKeys: {
-      ...settings.apiKeys,
-      smtpHost: preset.host,
-      smtpPort: preset.port,
-      smtpUser: senderEmail,
-      smtpFromAddress: senderEmail,
-    },
-  }
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        marginBottom: "1rem",
+        padding: "1rem",
+        borderRadius: 18,
+        background: cardShell,
+        border: `1px solid ${borderColor}`,
+      }}
+    >
+      <div style={{ fontSize: "0.72rem", marginBottom: "0.95rem", color: "rgba(238,228,252,0.5)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  )
 }
 
 export function SettingsPanelConnected({ onClose, settings, onSave }: SettingsProps) {
   const [form, setForm] = useState(settings)
-  const [provider, setProvider] = useState<EmailProvider>(() => inferProvider(settings))
-  const [showAdvancedEmail, setShowAdvancedEmail] = useState(false)
 
   useEffect(() => {
     setForm(settings)
-    setProvider(inferProvider(settings))
   }, [settings])
 
-  const selectedPreset = isPresetProvider(provider) ? providerPresets[provider] : null
-  const senderEmail = form.notifications.notificationEmail || form.apiKeys.smtpUser || ""
-  const senderReady = Boolean(form.apiKeys.smtpUser && form.apiKeys.smtpPass)
-  const emailStatus = useMemo(() => {
-    if (senderReady) {
-      return `Ready to send from ${form.apiKeys.smtpFromAddress || form.apiKeys.smtpUser}`
-    }
-    return "Add an email and app password to enable delivery"
-  }, [form.apiKeys.smtpFromAddress, form.apiKeys.smtpPass, form.apiKeys.smtpUser, senderReady])
-
-  const updateNotificationEmail = (email: string) => {
-    setForm(current => {
-      const next = {
-        ...current,
-        notifications: { ...current.notifications, notificationEmail: email },
-        apiKeys: {
-          ...current.apiKeys,
-          smtpUser: current.apiKeys.smtpUser || email,
-          smtpFromAddress: current.apiKeys.smtpFromAddress || email,
-        },
-      }
-      return provider === "custom" ? next : applyProviderPreset(next, provider)
+  const handleSave = () => {
+    onSave({
+      ...form,
+      apiKeys: {
+        ...form.apiKeys,
+        sendGridApiKey: "",
+        smtpHost: "",
+        smtpPort: "",
+        smtpUser: "",
+        smtpPass: "",
+        smtpFromAddress: "",
+      },
     })
   }
 
-  const chooseProvider = (nextProvider: EmailProvider) => {
-    setProvider(nextProvider)
-    setForm(current => applyProviderPreset(current, nextProvider))
-  }
-
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200 }} onClick={onClose}>
-      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 380, background: "#0e0b1a", borderLeft: "1px solid rgba(190,157,255,0.12)", padding: "1.5rem", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2rem" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(7,4,15,0.42)", backdropFilter: "blur(8px)" }} onClick={onClose}>
+      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 430, background: panelShell, borderLeft: "1px solid rgba(190,157,255,0.12)", padding: "1.25rem", overflowY: "auto", boxShadow: "-24px 0 60px rgba(0,0,0,0.35)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", padding: "1rem", borderRadius: 22, background: "radial-gradient(circle at top left, rgba(190,157,255,0.18), rgba(190,157,255,0) 45%), linear-gradient(135deg, rgba(32,24,52,0.96), rgba(14,10,24,0.98))", border: `1px solid ${borderColor}` }}>
           <div>
-            <div style={{ fontSize: "0.75rem", color: "#aaa" }}>Preferences</div>
-            <h3 style={{ color: "#eee4fc" }}>Settings</h3>
+            <div style={{ fontSize: "0.75rem", color: "rgba(238,228,252,0.56)" }}>Preferences</div>
+            <h3 style={{ color: "#eee4fc", margin: "0.2rem 0 0" }}>Settings</h3>
           </div>
-          <button onClick={onClose}>x</button>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, border: `1px solid ${borderColor}`, background: "rgba(14,10,24,0.92)", color: "#eee4fc", cursor: "pointer" }}>x</button>
         </div>
 
-        <div style={{ marginBottom: "2rem" }}>
-          <div style={{ fontSize: "0.75rem", marginBottom: "1rem", color: "#aaa" }}>General</div>
-          <input style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} value={form.general.defaultModel} onChange={e => setForm({ ...form, general: { ...form.general, defaultModel: e.target.value } })} />
-          <input style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} value={form.general.timezone} onChange={e => setForm({ ...form, general: { ...form.general, timezone: e.target.value } })} />
-          <input style={{ padding: "0.4rem", width: "100%" }} value={form.general.maxConcurrentWorkflows} onChange={e => setForm({ ...form, general: { ...form.general, maxConcurrentWorkflows: e.target.value } })} />
-        </div>
-
-        <div style={{ marginBottom: "2rem" }}>
-          <div style={{ fontSize: "0.75rem", marginBottom: "1rem", color: "#aaa" }}>Notifications</div>
-          <input style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} placeholder="Where should workflow updates go?" value={form.notifications.notificationEmail} onChange={e => updateNotificationEmail(e.target.value)} />
-        </div>
-
-        <div style={{ marginBottom: "2rem" }}>
-          <div style={{ fontSize: "0.75rem", marginBottom: "1rem", color: "#aaa" }}>API Keys</div>
-          <input type="password" style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} value={form.apiKeys.geminiApiKey} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, geminiApiKey: e.target.value } })} />
-          <input style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} value={form.apiKeys.slackWebhookUrl} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, slackWebhookUrl: e.target.value } })} />
-          <input type="password" style={{ padding: "0.4rem", width: "100%", marginBottom: "1rem" }} value={form.apiKeys.sendGridApiKey} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, sendGridApiKey: e.target.value } })} />
-        </div>
-
-        <div style={{ marginBottom: "2rem", padding: "1rem", borderRadius: 14, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-            <div style={{ fontSize: "0.75rem", color: "#fcd34d", letterSpacing: "0.08em", textTransform: "uppercase" }}>Email Delivery</div>
-            <div style={{ fontSize: "0.72rem", color: senderReady ? "#86efac" : "rgba(255,255,255,0.65)" }}>{emailStatus}</div>
-          </div>
-          <div style={{ fontSize: "0.84rem", color: "rgba(255,255,255,0.78)", lineHeight: 1.6, marginBottom: "1rem" }}>
-            Pick your email provider, enter the inbox you want to send from, and paste the app password. We will fill the SMTP details for you.
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.625rem", marginBottom: "1rem" }}>
-            {(["gmail", "outlook", "yahoo", "custom"] as EmailProvider[]).map(option => (
-              (() => {
-                const optionMeta = isPresetProvider(option)
-                  ? providerPresets[option]
-                  : { label: "Custom SMTP", help: "Show advanced fields and enter your own mail server details." }
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => chooseProvider(option)}
-                    style={{
-                      padding: "0.75rem",
-                      borderRadius: 12,
-                      textAlign: "left",
-                      border: provider === option ? "1px solid rgba(245,158,11,0.55)" : "1px solid rgba(255,255,255,0.12)",
-                      background: provider === option ? "rgba(245,158,11,0.14)" : "rgba(255,255,255,0.04)",
-                      color: "#fff8eb",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, marginBottom: "0.2rem" }}>{optionMeta.label}</div>
-                    <div style={{ fontSize: "0.72rem", color: "rgba(255,248,235,0.68)", lineHeight: 1.45 }}>
-                      {optionMeta.help}
-                    </div>
-                  </button>
-                )
-              })()
-            ))}
-          </div>
-
-          <input
-            style={{ padding: "0.55rem", width: "100%", marginBottom: "0.85rem" }}
-            placeholder="Sender email address"
-            value={senderEmail}
-            onChange={e => updateNotificationEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            style={{ padding: "0.55rem", width: "100%", marginBottom: "0.85rem" }}
-            placeholder={provider === "custom" ? "SMTP password" : "App password"}
-            value={form.apiKeys.smtpPass}
-            onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, smtpPass: e.target.value } })}
-          />
-
-          {selectedPreset && (
-            <div style={{ fontSize: "0.76rem", color: "rgba(255,248,235,0.68)", marginBottom: "0.85rem", lineHeight: 1.55 }}>
-              {selectedPreset.help} Server details are filled automatically: `{selectedPreset.host}:{selectedPreset.port}`.
+        <Section title="General">
+          <div style={{ display: "grid", gap: "0.85rem" }}>
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Default model</div>
+              <select style={selectStyle} value={form.general.defaultModel} onChange={e => setForm({ ...form, general: { ...form.general, defaultModel: e.target.value } })}>
+                {modelOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
             </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowAdvancedEmail(current => !current)}
-            style={{ background: "none", border: "none", padding: 0, color: "#fcd34d", cursor: "pointer", fontSize: "0.8rem", marginBottom: showAdvancedEmail ? "0.85rem" : 0 }}
-          >
-            {showAdvancedEmail ? "Hide advanced email setup" : "Show advanced email setup"}
-          </button>
-
-          {(showAdvancedEmail || provider === "custom") && (
-            <div style={{ marginTop: "0.85rem" }}>
-              <input style={{ padding: "0.55rem", width: "100%", marginBottom: "0.75rem" }} placeholder="SMTP Host" value={form.apiKeys.smtpHost} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, smtpHost: e.target.value } })} />
-              <input style={{ padding: "0.55rem", width: "100%", marginBottom: "0.75rem" }} placeholder="SMTP Port" value={form.apiKeys.smtpPort} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, smtpPort: e.target.value } })} />
-              <input style={{ padding: "0.55rem", width: "100%", marginBottom: "0.75rem" }} placeholder="SMTP Username" value={form.apiKeys.smtpUser} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, smtpUser: e.target.value } })} />
-              <input style={{ padding: "0.55rem", width: "100%" }} placeholder="From Address (optional)" value={form.apiKeys.smtpFromAddress} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, smtpFromAddress: e.target.value } })} />
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Timezone</div>
+              <input style={inputStyle} value={form.general.timezone} onChange={e => setForm({ ...form, general: { ...form.general, timezone: e.target.value } })} />
             </div>
-          )}
-        </div>
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Max concurrent workflows</div>
+              <select style={selectStyle} value={form.general.maxConcurrentWorkflows} onChange={e => setForm({ ...form, general: { ...form.general, maxConcurrentWorkflows: e.target.value } })}>
+                {concurrencyOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </div>
+          </div>
+        </Section>
 
-        <button style={{ width: "100%", padding: "0.5rem" }} onClick={() => onSave(form)}>
+        <Section title="Delivery Inbox">
+          <div style={{ display: "grid", gap: "0.85rem" }}>
+            <div style={{ padding: "0.95rem 1rem", borderRadius: 16, border: "1px solid rgba(74,222,128,0.16)", background: "rgba(74,222,128,0.08)" }}>
+              <div style={{ fontSize: "0.76rem", color: "#86efac", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "0.35rem" }}>Flow-managed delivery</div>
+              <div style={{ fontSize: "0.84rem", color: "rgba(238,228,252,0.78)", lineHeight: 1.6 }}>
+                FLOW sends automated emails from the platform mailbox. Users only choose where results should arrive.
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Recipient inbox</div>
+              <input
+                style={inputStyle}
+                placeholder="Where should workflow results and alerts go?"
+                value={form.notifications.notificationEmail}
+                onChange={e => setForm({ ...form, notifications: { ...form.notifications, notificationEmail: e.target.value } })}
+              />
+            </div>
+            <ToggleRow
+              label="Email on workflow complete"
+              hint="Send a completion email when an automation finishes successfully."
+              checked={form.notifications.emailOnWorkflowComplete}
+              onChange={checked => setForm({ ...form, notifications: { ...form.notifications, emailOnWorkflowComplete: checked } })}
+            />
+            <ToggleRow
+              label="Email on failure"
+              hint="Send a failure alert to this inbox if FLOW cannot finish a run."
+              checked={form.notifications.emailOnFailure}
+              onChange={checked => setForm({ ...form, notifications: { ...form.notifications, emailOnFailure: checked } })}
+            />
+          </div>
+        </Section>
+
+        <Section title="Optional Overrides">
+          <div style={{ display: "grid", gap: "0.85rem" }}>
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Gemini API key</div>
+              <input type="password" style={inputStyle} placeholder="Optional: use your own Gemini quota" value={form.apiKeys.geminiApiKey} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, geminiApiKey: e.target.value } })} />
+              <div style={{ fontSize: "0.78rem", color: "rgba(238,228,252,0.45)", marginTop: "0.5rem", lineHeight: 1.55 }}>
+                Leave this blank to use FLOW&apos;s default experience.
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(238,228,252,0.58)", marginBottom: "0.45rem" }}>Slack webhook URL</div>
+              <input style={inputStyle} placeholder="Optional: post workflow alerts to Slack" value={form.apiKeys.slackWebhookUrl} onChange={e => setForm({ ...form, apiKeys: { ...form.apiKeys, slackWebhookUrl: e.target.value } })} />
+            </div>
+          </div>
+        </Section>
+
+        <button style={{ width: "100%", padding: "0.95rem 1rem", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #be9dff, #dbc4ff)", color: "#3d0088", fontWeight: 800, cursor: "pointer", boxShadow: "0 16px 36px rgba(122,78,201,0.28)" }} onClick={handleSave}>
           Save Settings
         </button>
       </div>
@@ -208,18 +229,59 @@ export function SettingsPanelConnected({ onClose, settings, onSave }: SettingsPr
 }
 
 export function NotificationsPanelConnected({ onClose, notifications }: NotificationsProps) {
+  const unreadCount = notifications.filter(item => !item.isRead).length
   return (
-    <div style={{ position: "fixed", inset: 0 }} onClick={onClose}>
-      <div style={{ position: "absolute", right: 0, width: 360, height: "100%", background: "#0e0b1a", padding: "1rem" }} onClick={e => e.stopPropagation()}>
-        <h3>Notifications</h3>
-        {notifications.map(n => (
-          <div key={n.id} style={{ marginBottom: "1rem" }}>
-            <strong>{n.title}</strong>
-            <p>{n.desc}</p>
-            <small>{n.time}</small>
+    <div style={{ position: "fixed", inset: 0, zIndex: 220, background: "rgba(7,4,15,0.32)", backdropFilter: "blur(8px)" }} onClick={onClose}>
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 390,
+          background: panelShell,
+          padding: "1.25rem",
+          borderLeft: "1px solid rgba(190,157,255,0.12)",
+          boxShadow: "-24px 0 60px rgba(0,0,0,0.35)",
+          overflowY: "auto",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", padding: "1rem", borderRadius: 22, background: "radial-gradient(circle at top left, rgba(190,157,255,0.18), rgba(190,157,255,0) 45%), linear-gradient(135deg, rgba(32,24,52,0.96), rgba(14,10,24,0.98))", border: `1px solid ${borderColor}` }}>
+          <div>
+            <div style={{ fontSize: "0.75rem", color: "rgba(238,228,252,0.56)" }}>Inbox</div>
+            <h3 style={{ color: "#eee4fc", margin: "0.2rem 0 0" }}>Notifications</h3>
+            <div style={{ fontSize: "0.82rem", color: "rgba(238,228,252,0.48)", marginTop: "0.3rem" }}>
+              {unreadCount > 0 ? `${unreadCount} unread update${unreadCount === 1 ? "" : "s"}` : "All caught up"}
+            </div>
           </div>
-        ))}
-        <button onClick={onClose}>Close</button>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, border: `1px solid ${borderColor}`, background: "rgba(14,10,24,0.92)", color: "#eee4fc", cursor: "pointer" }}>x</button>
+        </div>
+
+        <div style={{ display: "grid", gap: "0.85rem" }}>
+          {notifications.length > 0 ? notifications.map(n => (
+            <div
+              key={n.id}
+              style={{
+                padding: "1rem",
+                borderRadius: 18,
+                background: n.isRead ? cardShell : "linear-gradient(180deg, rgba(44,31,70,0.88) 0%, rgba(20,14,34,0.96) 100%)",
+                border: `1px solid ${n.isRead ? borderColor : "rgba(190,157,255,0.24)"}`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                <strong style={{ color: "#eee4fc", fontSize: "0.93rem", lineHeight: 1.4 }}>{n.title}</strong>
+                {!n.isRead && <span style={{ flexShrink: 0, marginTop: "0.15rem", width: 8, height: 8, borderRadius: "50%", background: "#be9dff", boxShadow: "0 0 14px rgba(190,157,255,0.55)" }} />}
+              </div>
+              <p style={{ margin: 0, fontSize: "0.84rem", color: "rgba(238,228,252,0.58)", lineHeight: 1.65 }}>{n.desc}</p>
+              <div style={{ marginTop: "0.8rem", fontSize: "0.72rem", color: "rgba(238,228,252,0.36)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{n.time}</div>
+            </div>
+          )) : (
+            <div style={{ padding: "1rem", borderRadius: 18, background: cardShell, border: `1px solid ${borderColor}`, color: "rgba(238,228,252,0.52)", lineHeight: 1.65 }}>
+              No notifications yet. Workflow activity, delivery alerts, and failure updates will appear here.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

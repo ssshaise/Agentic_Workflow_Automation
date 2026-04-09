@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import HeroInputSectionConnected from "../components/HeroInputSectionConnected"
 import ExecutionSectionConnected from "../components/ExecutionSectionConnected"
 import ReasoningSectionConnected from "../components/ReasoningSectionConnected"
 import TemplatesSection from "../components/TemplatesSection"
+import DashboardAmbientBackground from "../components/DashboardAmbientBackground"
 import AgentPageConnected from "../components/AgentPageConnected"
 import WorkflowsPageConnected from "../components/WorkflowsPageConnected"
 import LogsPageConnected from "../components/LogsPageConnected"
@@ -19,6 +21,7 @@ import {
   replayWorkflow,
   saveSettings,
   toggleWorkflow,
+  logout,
   type DashboardSettings,
   type LatestRun,
   type LogItem,
@@ -26,6 +29,7 @@ import {
   type WorkflowItem,
   type WorkflowStats,
 } from "../services/agentApi"
+import { getStoredAuthUser } from "../services/authStorage"
 
 type NavTab = "dashboard" | "workflows" | "logs"
 type SidebarAgent = "Web Search" | "Python Executor" | "Email Sender" | "Database" | "History"
@@ -39,6 +43,7 @@ const agents: { icon: string; label: SidebarAgent }[] = [
 ]
 
 export default function DashboardPageConnected() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard")
   const [activeAgent, setActiveAgent] = useState<SidebarAgent | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -57,6 +62,16 @@ export default function DashboardPageConnected() {
   const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null)
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null)
   const [pollingRunId, setPollingRunId] = useState<string | null>(null)
+  const viewer = useMemo(() => getStoredAuthUser(), [])
+  const initials = useMemo(() => {
+    const source = viewer?.name || viewer?.email || "RK"
+    return source
+      .split(/[\s@._-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "RK"
+  }, [viewer])
 
   const isDashboard = activeTab === "dashboard" && activeAgent === null
 
@@ -304,8 +319,15 @@ export default function DashboardPageConnected() {
     setStatusMessage("Workflow output downloaded.")
   }
 
+  const handleLogout = async () => {
+    await logout()
+    navigate("/login")
+  }
+
   return (
     <>
+      <DashboardAmbientBackground />
+
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -315,9 +337,9 @@ export default function DashboardPageConnected() {
         WebkitBackdropFilter: "blur(20px)",
         borderBottom: "1px solid rgba(190,157,255,0.08)",
       }}>
-        <div style={{ fontFamily: "Manrope,sans-serif", fontWeight: 800, fontSize: "0.9375rem", letterSpacing: "0.08em", color: "#eee4fc" }}>
+        <Link to="/" style={{ fontFamily: "Manrope,sans-serif", fontWeight: 800, fontSize: "0.9375rem", letterSpacing: "0.08em", color: "#eee4fc", textDecoration: "none" }}>
           FLOW
-        </div>
+        </Link>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           {(["dashboard", "workflows", "logs"] as NavTab[]).map(tab => (
@@ -354,13 +376,16 @@ export default function DashboardPageConnected() {
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>settings</span>
           </button>
 
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(190,157,255,0.15)", border: "1px solid rgba(190,157,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6875rem", fontWeight: 700, color: "#be9dff", cursor: "pointer" }}>
-            RK
-          </div>
+          <button onClick={handleLogout} title={viewer ? `Sign out ${viewer.email}` : "Sign out"} style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(190,157,255,0.15)", border: "1px solid rgba(190,157,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6875rem", fontWeight: 700, color: "#be9dff", cursor: "pointer" }}>
+            {initials}
+          </button>
+          <button onClick={handleLogout} style={{ background: "rgba(41,34,58,0.5)", border: "1px solid rgba(190,157,255,0.12)", color: "rgba(238,228,252,0.72)", cursor: "pointer", padding: "0.45rem 0.8rem", borderRadius: 8, fontFamily: "Manrope,sans-serif", fontSize: "0.75rem", fontWeight: 600 }}>
+            Logout
+          </button>
         </div>
       </nav>
 
-      <aside style={{ position: "fixed", left: 0, top: 56, bottom: 0, width: 220, background: "#100b1c", borderRight: "1px solid rgba(190,157,255,0.08)", display: "flex", flexDirection: "column", zIndex: 50 }}>
+      <aside style={{ position: "fixed", left: 0, top: 56, bottom: 0, width: 220, background: "rgba(16,11,28,0.82)", borderRight: "1px solid rgba(190,157,255,0.08)", display: "flex", flexDirection: "column", zIndex: 50, backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)" }}>
         <div style={{ padding: "1.25rem", borderBottom: "1px solid rgba(190,157,255,0.08)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.625rem 0.875rem", background: "rgba(41,34,58,0.5)", borderRadius: 10, border: "1px solid rgba(190,157,255,0.1)" }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: isBusy ? "#be9dff" : "#4ade80", animation: "pulse 2s infinite" }} />
@@ -404,7 +429,7 @@ export default function DashboardPageConnected() {
         </div>
       </aside>
 
-      <div style={{ marginLeft: 220, paddingTop: 56 }}>
+      <div style={{ marginLeft: 220, paddingTop: 56, position: "relative", zIndex: 1 }}>
         {activeTab === "workflows" && <WorkflowsPageConnected workflows={filteredWorkflows} stats={workflowStats} onCreateWorkflow={() => createNewWorkflow()} onToggleWorkflow={handleWorkflowToggle} onReplayWorkflow={handleWorkflowReplay} onDeleteWorkflow={handleWorkflowDelete} />}
         {activeTab === "logs" && <LogsPageConnected logs={filteredLogs} onExport={handleExportLogs} onClear={handleClearLogs} />}
         {activeTab === "dashboard" && activeAgent && <AgentPageConnected agent={activeAgent} history={history} onReplayHistory={handleHistoryReplay} onCloneHistory={handleHistoryClone} onStatusMessage={setStatusMessage} onRefresh={refreshDashboard} />}

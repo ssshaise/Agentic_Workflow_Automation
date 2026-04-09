@@ -1,6 +1,9 @@
 import json
 import re
+import time
 from typing import Any, Dict
+
+import requests
 
 try:
     from .config import GEMINI_API_KEY, GEMINI_MODEL
@@ -40,15 +43,7 @@ class GeminiClient:
                 "temperature": 0.2,
             },
         }
-        response = self.session.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
-            headers={
-                "x-goog-api-key": self.api_key,
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-        response.raise_for_status()
+        response = self._post_with_transient_retry(payload)
         body: Dict[str, Any] = response.json()
         candidates = body.get("candidates") or []
         if not candidates:
@@ -58,6 +53,34 @@ class GeminiClient:
         if not text:
             raise ValueError("Gemini returned an empty response")
         return text
+
+    def _post_with_transient_retry(self, payload: Dict[str, Any]) -> requests.Response:
+        last_exc: Exception | None = None
+        for attempt in range(4):
+            try:
+                response = self.session.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+                    headers={
+                        "x-goog-api-key": self.api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < 3:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                last_exc = exc
+                status_code = getattr(exc.response, "status_code", None)
+                if status_code in {429, 500, 502, 503, 504} and attempt < 3:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Gemini request failed without a captured exception.")
 
     def _repair_json(self, broken_text: str, max_output_tokens: int = 1024) -> str:
         repair_prompt = (
